@@ -1,21 +1,29 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JB URLs</title>
+    <script>
+        function generateURL() {
+            const input = document.getElementById("hostInput").value;
+            const url = `jbapp://junkbusters.test?host=${encodeURIComponent(input)}`;
+            const result = document.getElementById("result");
+            result.innerHTML = `<a href="${url}">${url}</a>`;
+        }
+    </script>
+</head>
 <body>
-<p>iOS:</p>
-<a href="jbapp://junkbusters.test?host=staging">jbapp://junkbusters.test?host=staging</a>
-<br>
-<br>
-<a href="jbapp://junkbusters.test?host=production">jbapp://junkbusters.test?host=production</a>
-<br>
-<br>
-<a href="jbapp://junkbusters.test?customUrl=https%3A%2F%2Flocalhost%3A44388%2F">jbapp://junkbusters.test?customUrl=https%3A%2F%2Flocalhost%3A44388%2F</a>
-<p>Android:</p>
-<a href="https://junkbusters.test/?host=staging">https://junkbusters.test/?host=staging</a>
-<br>
-<br>
-<a href="https://junkbusters.test/?host=production">https://junkbusters.test/?host=production</a>
-<br>
-<br>
-<a href="https://junkbusters.test/?customUrl=https%3A%2F%2Flocalhost%3A44388%2F">https://junkbusters.test/?customUrl=https%3A%2F%2Flocalhost%3A44388%2F</a>
+    <h1>JB URLs</h1>
+	<a href="jbapp://junkbusters.test?host=staging">jbapp://junkbusters.test?host=staging</a>
+	<br>
+	<br>
+	<a href="jbapp://junkbusters.test?host=production">jbapp://junkbusters.test?host=production</a>
+	<br>
+	<br>
+    <label for="hostInput">Enter Host:</label>
+    <input type="text" id="hostInput" placeholder="Enter host">
+    <button onclick="generateURL()">Generate</button>
+    <div id="result"></div>
 </body>
 </html>
