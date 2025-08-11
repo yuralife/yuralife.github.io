@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Route Visualizer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .main-container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .map-container {
+            width: 66%;
+            position: relative;
+        }
+        
+        .sidebar {
+            width: 34%;
+            background-color: #f5f5f5;
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 2px solid #ccc;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin: 0 0 20px 0;
+            font-size: 24px;
+        }
+        
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+        }
+        
+        .route-input {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 3px;
+            font-size: 12px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        .legend {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 3px;
+            margin-right: 10px;
+        }
+        
+        .route-info {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .route-stats {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .route-stats h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 16px;
+        }
+        
+        .route-stats .distance {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        
+        .route-stats .points {
+            color: #666;
+            font-size: 12px;
+        }
+        
+        .route-1-stats .distance {
+            color: #3388ff;
+        }
+        
+        .route-2-stats .distance {
+            color: #ff3333;
+        }
+        
+        .time-gaps {
+            margin: 20px 0;
+        }
+        
+        .time-gaps h3 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .gaps-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .gap-list {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .gap-list h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .gap-list.route-1 h4 {
+            color: #3388ff;
+        }
+        
+        .gap-list.route-2 h4 {
+            color: #ff3333;
+        }
+        
+        .gap-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+            font-size: 12px;
+        }
+        
+        .gap-item:last-child {
+            border-bottom: none;
+        }
+        
+        .gap-time {
+            font-weight: bold;
+            color: #ff8800;
+        }
+        
+        .gap-details {
+            color: #666;
+            font-size: 11px;
+            margin-top: 2px;
+        }
+        
+        .no-gaps {
+            text-align: center;
+            color: #999;
+            font-style: italic;
+            padding: 20px;
+            font-size: 12px;
+        }
+        
+        .sample-data {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .sample-data h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .sample-data pre {
+            background: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #333;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="map-container">
+            <div id="map"></div>
+        </div>
+        
+        <div class="sidebar">
+            <h1>Route Visualizer</h1>
+            
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #3388ff;"></div>
+                    <span>Route 1</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #ff3333;"></div>
+                    <span>Route 2</span>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <div>
+                    <label for="route1">Route 1 (Blue) - Paste JSON array:</label>
+                    <textarea id="route1" class="route-input" rows="3" placeholder="Paste your first route JSON array here..."></textarea>
+                </div>
+                <div>
+                    <label for="route2">Route 2 (Red) - Paste JSON array:</label>
+                    <textarea id="route2" class="route-input" rows="3" placeholder="Paste your second route JSON array here..."></textarea>
+                </div>
+                <div class="button-group">
+                    <button onclick="visualizeRoutes()">Visualize Routes</button>
+                    <button onclick="loadSampleData()">Load Sample Data</button>
+                    <button onclick="clearRoutes()">Clear Routes</button>
+                </div>
+            </div>
+            
+            <div class="route-info">
+                <div class="route-stats route-1-stats">
+                    <h3>Route 1</h3>
+                    <div class="distance" id="route1-distance">-</div>
+                    <div class="points" id="route1-points">No data</div>
+                </div>
+                <div class="route-stats route-2-stats">
+                    <h3>Route 2</h3>
+                    <div class="distance" id="route2-distance">-</div>
+                    <div class="points" id="route2-points">No data</div>
+                </div>
+            </div>
+            
+            <div class="time-gaps">
+                <h3>Longest Time Gaps (>5 minutes)</h3>
+                <div class="gaps-container">
+                    <div class="gap-list route-1">
+                        <h4>Route 1</h4>
+                        <div id="route1-gaps"></div>
+                    </div>
+                    <div class="gap-list route-2">
+                        <h4>Route 2</h4>
+                        <div id="route2-gaps"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sample-data">
+                <h3>Sample Data Format:</h3>
+                <pre>[
+  {
+    "Latitude": 55.85617201652887,
+    "Longitude": 12.323022340171422,
+    "CreateDate": "2025-05-26T06:37:06.6045359"
+  },
+  {
+    "Latitude": 55.84397328277846,
+    "Longitude": 12.337205472147788,
+    "CreateDate": "2025-05-26T06:34:55.5656416"
+  }
+]</pre>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script>
+        let map;
+        let routeLayers = [];
+        
+        // Initialize the map
+        function initMap() {
+            map = L.map('map').setView([55.85, 12.33], 13);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+        
+        // Calculate distance between two points using Haversine formula
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth's radius in kilometers
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c; // Distance in kilometers
+        }
+        
+        // Calculate total distance for a route
+        function calculateTotalDistance(routeData) {
+            if (!routeData || routeData.length < 2) return 0;
+            
+            let totalDistance = 0;
+            for (let i = 1; i < routeData.length; i++) {
+                const prevPoint = routeData[i-1];
+                const currentPoint = routeData[i];
+                totalDistance += calculateDistance(
+                    prevPoint.Latitude, prevPoint.Longitude,
+                    currentPoint.Latitude, currentPoint.Longitude
+                );
+            }
+            return totalDistance;
+        }
+        
+        // Format distance for display
+        function formatDistance(distanceKm) {
+            if (distanceKm < 1) {
+                return `${Math.round(distanceKm * 1000)}m`;
+            } else {
+                return `${distanceKm.toFixed(2)}km`;
+            }
+        }
+        
+        // Format time difference for display
+        function formatTimeDifference(minutes) {
+            if (minutes < 60) {
+                return `${minutes}m`;
+            } else {
+                const hours = Math.floor(minutes / 60);
+                const mins = minutes % 60;
+                return `${hours}h ${mins}m`;
+            }
+        }
+        
+        // Calculate time gaps for a route
+        function calculateTimeGaps(routeData) {
+            if (!routeData || routeData.length < 2) return [];
+            
+            const gaps = [];
+            for (let i = 1; i < routeData.length; i++) {
+                const prevPoint = routeData[i-1];
+                const currentPoint = routeData[i];
+                const timeDiffMinutes = getTimeDifferenceInMinutes(currentPoint.CreateDate, prevPoint.CreateDate);
+                
+                if (timeDiffMinutes > 5) {
+                    gaps.push({
+                        fromIndex: i-1,
+                        toIndex: i,
+                        minutes: timeDiffMinutes,
+                        fromTime: new Date(prevPoint.CreateDate),
+                        toTime: new Date(currentPoint.CreateDate),
+                        fromPoint: prevPoint,
+                        toPoint: currentPoint
+                    });
+                }
+            }
+            
+            // Sort by longest time gap first
+            gaps.sort((a, b) => b.minutes - a.minutes);
+            
+            // Return top 10
+            return gaps.slice(0, 10);
+        }
+        
+        // Update time gaps display
+        function updateTimeGaps(routeData, routeNumber) {
+            const gapsElement = document.getElementById(`route${routeNumber}-gaps`);
+            
+            if (!routeData || routeData.length < 2) {
+                gapsElement.innerHTML = '<div class="no-gaps">No data</div>';
+                return;
+            }
+            
+            const gaps = calculateTimeGaps(routeData);
+            
+            if (gaps.length === 0) {
+                gapsElement.innerHTML = '<div class="no-gaps">No time gaps > 5 minutes</div>';
+                return;
+            }
+            
+            const gapsHtml = gaps.map((gap, index) => {
+                return `
+                    <div class="gap-item">
+                        <div class="gap-time">${formatTimeDifference(gap.minutes)}</div>
+                        <div class="gap-details">
+                            Point ${gap.fromIndex + 1} → Point ${gap.toIndex + 1}<br>
+                            ${gap.fromTime.toLocaleTimeString()} → ${gap.toTime.toLocaleTimeString()}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            gapsElement.innerHTML = gapsHtml;
+        }
+        
+        // Calculate time difference between two dates
+        function getTimeDifference(currentDate, previousDate) {
+            if (!previousDate) return "Start";
+            
+            const current = new Date(currentDate);
+            const previous = new Date(previousDate);
+            const diffMs = Math.abs(current - previous);
+            
+            const diffMinutes = Math.floor(diffMs / (1000 * 60));
+            const diffSeconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+            
+            if (diffMinutes > 0) {
+                return `+${diffMinutes}m ${diffSeconds}s`;
+            } else {
+                return `+${diffSeconds}s`;
+            }
+        }
+        
+        // Calculate time difference in minutes
+        function getTimeDifferenceInMinutes(currentDate, previousDate) {
+            if (!previousDate) return 0;
+            
+            const current = new Date(currentDate);
+            const previous = new Date(previousDate);
+            const diffMs = Math.abs(current - previous);
+            
+            return Math.floor(diffMs / (1000 * 60));
+        }
+        
+        // Add route to map
+        function addRouteToMap(routeData, color, routeName) {
+            if (!routeData || routeData.length === 0) return;
+            
+            // Create line coordinates
+            const lineCoords = routeData.map(point => [point.Latitude, point.Longitude]);
+            
+            // Create polyline
+            const polyline = L.polyline(lineCoords, {
+                color: color,
+                weight: 4,
+                opacity: 0.8
+            }).addTo(map);
+            
+            // Add markers with time differences
+            routeData.forEach((point, index) => {
+                const previousPoint = index > 0 ? routeData[index - 1] : null;
+                const nextPoint = index < routeData.length - 1 ? routeData[index + 1] : null;
+                const timeDiff = getTimeDifference(point.CreateDate, previousPoint?.CreateDate);
+                
+                // Check if the NEXT point has a time gap > 5 minutes
+                const nextTimeDiffMinutes = nextPoint ? getTimeDifferenceInMinutes(nextPoint.CreateDate, point.CreateDate) : 0;
+                
+                // Determine pin color and icon: yellow with warning icon if next point has time gap > 5 minutes
+                let pinColor = color;
+                let iconHtml = `<div style="background-color: ${pinColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
+                
+                if (nextTimeDiffMinutes > 5) {
+                    pinColor = '#ffcc00'; // Yellow for long gaps to next point
+                    iconHtml = `<div style="background-color: ${pinColor}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: #333;">!</div>`;
+                }
+                
+                const customIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: iconHtml,
+                    iconSize: nextTimeDiffMinutes > 5 ? [16, 16] : [12, 12],
+                    iconAnchor: nextTimeDiffMinutes > 5 ? [8, 8] : [6, 6]
+                });
+                
+                const marker = L.marker([point.Latitude, point.Longitude], {
+                    icon: customIcon
+                }).addTo(map);
+                
+                // Create popup content with warning for long gaps to next point
+                const warningText = nextTimeDiffMinutes > 5 ? '<br><span style="color: #ff8800; font-weight: bold;">⚠️ Long gap to next point (>5 min)</span>' : '';
+                const popupContent = `
+                    <div>
+                        <strong>${routeName}</strong><br>
+                        <strong>Point ${index + 1}</strong><br>
+                        Time: ${new Date(point.CreateDate).toLocaleString()}<br>
+                        Lat: ${point.Latitude.toFixed(6)}<br>
+                        Lng: ${point.Longitude.toFixed(6)}<br>
+						Acc: ${point.Accuracy ? point.Accuracy.toFixed(2) : 'N/A'}<br>
+                        <strong>Time from previous: ${timeDiff}</strong>${warningText}
+                    </div>
+                `;
+                
+                marker.bindPopup(popupContent);
+                
+                routeLayers.push(marker);
+            });
+            
+            routeLayers.push(polyline);
+            
+            // Fit map to show all routes
+            map.fitBounds(polyline.getBounds(), { padding: [20, 20] });
+        }
+        
+        // Update route statistics display
+        function updateRouteStats(routeData, routeNumber) {
+            const distanceElement = document.getElementById(`route${routeNumber}-distance`);
+            const pointsElement = document.getElementById(`route${routeNumber}-points`);
+            
+            if (routeData && routeData.length > 0) {
+                const totalDistance = calculateTotalDistance(routeData);
+                distanceElement.textContent = formatDistance(totalDistance);
+                pointsElement.textContent = `${routeData.length} points`;
+            } else {
+                distanceElement.textContent = '-';
+                pointsElement.textContent = 'No data';
+            }
+            
+            // Update time gaps display
+            updateTimeGaps(routeData, routeNumber);
+        }
+        
+        // Clear all routes from map
+        function clearRoutes() {
+            routeLayers.forEach(layer => {
+                map.removeLayer(layer);
+            });
+            routeLayers = [];
+            
+            // Clear route statistics and time gaps
+            updateRouteStats(null, 1);
+            updateRouteStats(null, 2);
+        }
+        
+        // Visualize routes
+        function visualizeRoutes() {
+            clearRoutes();
+            
+            const route1Text = document.getElementById('route1').value.trim();
+            const route2Text = document.getElementById('route2').value.trim();
+            
+            try {
+                let route1Data = null;
+                let route2Data = null;
+                
+                if (route1Text) {
+                    route1Data = JSON.parse(route1Text);
+                    addRouteToMap(route1Data, '#3388ff', 'Route 1');
+                }
+                
+                if (route2Text) {
+                    route2Data = JSON.parse(route2Text);
+                    addRouteToMap(route2Data, '#ff3333', 'Route 2');
+                }
+                
+                // Update route statistics
+                updateRouteStats(route1Data, 1);
+                updateRouteStats(route2Data, 2);
+                
+                if (!route1Text && !route2Text) {
+                    alert('Please paste at least one route JSON array.');
+                }
+            } catch (error) {
+                alert('Error parsing JSON data. Please check your input format.');
+                console.error('JSON parsing error:', error);
+            }
+        }
+        
+        // Load sample data
+        function loadSampleData() {
+            const sampleRoute1 = [
+                {
+                    "Latitude": 55.85617201652887,
+                    "Longitude": 12.323022340171422,
+                    "CreateDate": "2025-05-26T06:30:00.0000000"
+                },
+                {
+                    "Latitude": 55.84897328277846,
+                    "Longitude": 12.330205472147788,
+                    "CreateDate": "2025-05-26T06:32:00.0000000"
+                },
+                {
+                    "Latitude": 55.84397328277846,
+                    "Longitude": 12.337205472147788,
+                    "CreateDate": "2025-05-26T06:45:00.0000000"
+                },
+                {
+                    "Latitude": 55.84120454578934,
+                    "Longitude": 12.340123456789012,
+                    "CreateDate": "2025-05-26T06:47:00.0000000"
+                },
+                {
+                    "Latitude": 55.83920454578934,
+                    "Longitude": 12.343123456789012,
+                    "CreateDate": "2025-05-26T07:05:00.0000000"
+                }
+            ];
+            
+            const sampleRoute2 = [
+                {
+                    "Latitude": 55.85000000000000,
+                    "Longitude": 12.330000000000000,
+                    "CreateDate": "2025-05-26T06:40:00.0000000"
+                },
+                {
+                    "Latitude": 55.84700000000000,
+                    "Longitude": 12.333000000000000,
+                    "CreateDate": "2025-05-26T06:42:00.0000000"
+                },
+                {
+                    "Latitude": 55.84500000000000,
+                    "Longitude": 12.335000000000000,
+                    "CreateDate": "2025-05-26T06:58:00.0000000"
+                },
+                {
+                    "Latitude": 55.84200000000000,
+                    "Longitude": 12.338000000000000,
+                    "CreateDate": "2025-05-26T07:00:00.0000000"
+                },
+                {
+                    "Latitude": 55.84000000000000,
+                    "Longitude": 12.342000000000000,
+                    "CreateDate": "2025-05-26T07:25:00.0000000"
+                }
+            ];
+            
+            document.getElementById('route1').value = JSON.stringify(sampleRoute1, null, 2);
+            document.getElementById('route2').value = JSON.stringify(sampleRoute2, null, 2);
+        }
+        
+        // Initialize map when page loads
+        window.onload = function() {
+            initMap();
+        };
+    </script>
+</body>
+</html>
