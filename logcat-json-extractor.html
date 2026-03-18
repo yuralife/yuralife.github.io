@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Logcat JSON Extractor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1e1e2e; color: #cdd6f4; min-height: 100vh; padding: 24px; }
+  h1 { font-size: 1.3rem; margin-bottom: 6px; color: #cba6f7; }
+  p.sub { font-size: 0.82rem; color: #6c7086; margin-bottom: 20px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; height: calc(100vh - 130px); }
+  .panel { display: flex; flex-direction: column; gap: 8px; }
+  label { font-size: 0.78rem; color: #a6adc8; text-transform: uppercase; letter-spacing: 0.05em; }
+  textarea {
+    flex: 1;
+    background: #181825;
+    color: #cdd6f4;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    padding: 12px;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 0.78rem;
+    resize: none;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  textarea:focus { border-color: #cba6f7; }
+  .actions { display: flex; gap: 8px; align-items: center; }
+  button {
+    padding: 7px 18px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    transition: opacity 0.15s;
+  }
+  button:hover { opacity: 0.85; }
+  .btn-extract { background: #cba6f7; color: #1e1e2e; }
+  .btn-copy { background: #a6e3a1; color: #1e1e2e; }
+  .btn-clear { background: #313244; color: #cdd6f4; }
+  .btn-format { background: #89dceb; color: #1e1e2e; }
+  .status { font-size: 0.78rem; margin-left: auto; }
+  .status.ok { color: #a6e3a1; }
+  .status.err { color: #f38ba8; }
+</style>
+</head>
+<body>
+
+<h1>🔍 Logcat JSON Extractor</h1>
+<p class="sub">Paste raw Android logcat output on the left → get clean JSON on the right.</p>
+
+<div class="grid">
+  <div class="panel">
+    <label>Logcat Input</label>
+    <textarea id="input" placeholder="Paste your logcat output here...&#10;&#10;e.g.:&#10;01:09:57.083  5390-5523  okhttp.OkHttpClient  I  {&quot;data&quot;:{...&#10;01:09:57.083  5390-5523  okhttp.OkHttpClient  I  ionType&quot;:..."></textarea>
+    <div class="actions">
+      <button class="btn-extract" onclick="extract()">Extract JSON</button>
+      <button class="btn-clear" onclick="document.getElementById('input').value='';document.getElementById('output').value='';setStatus('')">Clear</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <label>Clean JSON Output</label>
+    <textarea id="output" placeholder="Extracted JSON will appear here..."></textarea>
+    <div class="actions">
+      <button class="btn-format" onclick="formatJson()">Pretty Print</button>
+      <button class="btn-copy" onclick="copyOutput()">Copy</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function extract() {
+  const raw = document.getElementById('input').value;
+  if (!raw.trim()) return setStatus('No input.', true);
+
+  // Strip logcat line prefixes:
+  // handles formats like:
+  //   01:09:57.083  5390-5523  Tag  package  I  <payload>
+  //   01:09:57.083  5390-5523  Tag  I  <payload>
+  //   D/Tag(1234): <payload>
+  //   I/Tag: <payload>
+  const lines = raw.split('\n');
+  const payloads = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let payload = null;
+
+    // Format: timestamp  pid  tag  [package]  level  payload
+    // The level is a single letter: I D W E V
+    const stdMatch = trimmed.match(/^\d{2}:\d{2}:\d{2}\.\d+\s+\S+\s+\S+.*?\s+[IDWEV]\s{1,2}(.+)$/);
+    if (stdMatch) {
+      payload = stdMatch[1];
+    }
+
+    // Format: D/Tag(pid): payload  or  I/Tag: payload
+    if (!payload) {
+      const shortMatch = trimmed.match(/^[IDWEV]\/[^:]+\(\d+\):\s*(.+)$/) ||
+                         trimmed.match(/^[IDWEV]\/[^:]+:\s*(.+)$/);
+      if (shortMatch) payload = shortMatch[1];
+    }
+
+    // Fallback: if line contains JSON-like chars and no obvious prefix, take it as-is
+    if (!payload) {
+      if (trimmed.includes('{') || trimmed.includes('}') || trimmed.includes('"')) {
+        payload = trimmed;
+      }
+    }
+
+    if (payload) payloads.push(payload);
+  }
+
+  const combined = payloads.join('');
+
+  // Find the JSON boundaries (first { or [ to last } or ])
+  const firstBrace = combined.search(/[\[{]/);
+  const lastBrace = Math.max(combined.lastIndexOf('}'), combined.lastIndexOf(']'));
+
+  if (firstBrace === -1 || lastBrace === -1) {
+    return setStatus('No JSON found in input.', true);
+  }
+
+  const json = combined.slice(firstBrace, lastBrace + 1);
+
+  // Validate
+  try {
+    JSON.parse(json);
+    document.getElementById('output').value = json;
+    setStatus(`✓ Valid JSON extracted (${json.length} chars)`, false);
+  } catch(e) {
+    // Still output it even if invalid — might be useful
+    document.getElementById('output').value = json;
+    setStatus(`⚠ Extracted but invalid JSON: ${e.message}`, true);
+  }
+}
+
+function formatJson() {
+  const out = document.getElementById('output');
+  if (!out.value.trim()) return;
+  try {
+    out.value = JSON.stringify(JSON.parse(out.value), null, 2);
+    setStatus('Pretty printed ✓', false);
+  } catch(e) {
+    setStatus('Cannot format: invalid JSON', true);
+  }
+}
+
+function copyOutput() {
+  const val = document.getElementById('output').value;
+  if (!val) return;
+  navigator.clipboard.writeText(val).then(() => setStatus('Copied!', false));
+}
+
+function setStatus(msg, isError = false) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + (isError ? 'err' : 'ok');
+}
+
+// Auto-extract on paste
+document.getElementById('input').addEventListener('paste', () => {
+  setTimeout(extract, 50);
+});
+</script>
+</body>
+</html>
