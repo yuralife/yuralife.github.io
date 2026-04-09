@@ -240,6 +240,34 @@
             gap: 5px;
             margin: 10px 0;
         }
+        
+        .min-distance-section {
+            margin-bottom: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .coord-row {
+            display: flex;
+            gap: 8px;
+            margin: 8px 0;
+        }
+        
+        .coord-input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 12px;
+        }
+        
+        .min-distance-result {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #333;
+            min-height: 1.2em;
+        }
     </style>
 </head>
 <body>
@@ -264,17 +292,29 @@
             
             <div class="controls">
                 <div>
-                    <label for="route1">Route 1 (Blue) - Paste JSON array:</label>
-                    <textarea id="route1" class="route-input" rows="3" placeholder="Paste your first route JSON array here..."></textarea>
+                    <label for="route1">Route 1 (Blue) - Paste JSON array or CSV (with header):</label>
+                    <textarea id="route1" class="route-input" rows="3" placeholder="JSON array or CSV with Latitude, Longitude, CreateDate columns..."></textarea>
                 </div>
                 <div>
-                    <label for="route2">Route 2 (Red) - Paste JSON array:</label>
-                    <textarea id="route2" class="route-input" rows="3" placeholder="Paste your second route JSON array here..."></textarea>
+                    <label for="route2">Route 2 (Red) - Paste JSON array or CSV (with header):</label>
+                    <textarea id="route2" class="route-input" rows="3" placeholder="JSON array or CSV with Latitude, Longitude, CreateDate columns..."></textarea>
                 </div>
                 <div class="button-group">
                     <button onclick="visualizeRoutes()">Visualize Routes</button>
                     <button onclick="loadSampleData()">Load Sample Data</button>
                     <button onclick="clearRoutes()">Clear Routes</button>
+                </div>
+                
+                <div class="min-distance-section">
+                    <label for="targetLatitude">Target point — min distance to routes</label>
+                    <div class="coord-row">
+                        <input type="text" id="targetLatitude" class="coord-input" placeholder="Latitude" autocomplete="off" />
+                        <input type="text" id="targetLongitude" class="coord-input" placeholder="Longitude" autocomplete="off" />
+                    </div>
+                    <div class="button-group">
+                        <button type="button" id="calculate_min_distance" onclick="calculate_min_distance()">Calculate min distance</button>
+                    </div>
+                    <div id="min-distance-result" class="min-distance-result"></div>
                 </div>
             </div>
             
@@ -306,7 +346,7 @@
             </div>
             
             <div class="sample-data">
-                <h3>Sample Data Format:</h3>
+                <h3>Sample Data Format (JSON or CSV):</h3>
                 <pre>[
   {
     "Latitude": 55.85617201652887,
@@ -319,6 +359,10 @@
     "CreateDate": "2025-05-26T06:34:55.5656416"
   }
 ]</pre>
+                <p style="margin:10px 0 5px 0;font-size:12px;color:#333;">CSV example (extra columns are ignored):</p>
+                <pre>Id,TruckId,ShiftId,Latitude,Longitude,Accuracy,CreateDate
+26996418,133,25768,"54,07528238868343","12,10457137144849","3,9582548214809146",2025-11-10 09:46:20.6918232
+26996419,133,25768,"54,07505412514984","12,104288114722417","3,044732904882831",2025-11-10 09:46:25.5996858</pre>
             </div>
         </div>
     </div>
@@ -327,6 +371,138 @@
     <script>
         let map;
         let routeLayers = [];
+        let targetMarker = null;
+        
+        function removeTargetMarker() {
+            if (targetMarker && map) {
+                map.removeLayer(targetMarker);
+                targetMarker = null;
+            }
+        }
+        
+        function setTargetMarker(lat, lng) {
+            removeTargetMarker();
+            const icon = L.divIcon({
+                className: 'target-point-marker',
+                html: '<div style="background-color:#2e7d32;width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+            });
+            targetMarker = L.marker([lat, lng], { icon: icon, zIndexOffset: 1000 }).addTo(map);
+            targetMarker.bindPopup(
+                '<strong>Target point</strong><br>' +
+                'Lat: ' + lat.toFixed(6) + '<br>Lng: ' + lng.toFixed(6)
+            );
+        }
+        
+        // Parse one CSV line (RFC 4180-style quoted fields)
+        function parseCsvLine(line) {
+            const fields = [];
+            let i = 0;
+            const n = line.length;
+            while (i < n) {
+                if (line[i] === '"') {
+                    i++;
+                    let field = '';
+                    while (i < n) {
+                        if (line[i] === '"') {
+                            if (i + 1 < n && line[i + 1] === '"') {
+                                field += '"';
+                                i += 2;
+                            } else {
+                                i++;
+                                break;
+                            }
+                        } else {
+                            field += line[i];
+                            i++;
+                        }
+                    }
+                    fields.push(field);
+                    if (i < n && line[i] === ',') i++;
+                } else {
+                    const start = i;
+                    while (i < n && line[i] !== ',') i++;
+                    fields.push(line.slice(start, i).trim());
+                    if (i < n && line[i] === ',') i++;
+                }
+            }
+            return fields;
+        }
+        
+        // Normalize European decimal comma to a number (coordinates, accuracy)
+        function normalizeNumericCell(s) {
+            if (s == null || s === '') return NaN;
+            const t = String(s).trim().replace(/^"|"$/g, '').replace(',', '.');
+            return parseFloat(t);
+        }
+        
+        function parseCsvRoute(text) {
+            const stripped = text.replace(/^\uFEFF/, '');
+            const lines = stripped.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            if (lines.length < 2) {
+                throw new Error('CSV must have a header row and at least one data row.');
+            }
+            const headerCells = parseCsvLine(lines[0]);
+            const colIndex = {};
+            const wanted = {
+                latitude: 'Latitude',
+                longitude: 'Longitude',
+                createdate: 'CreateDate',
+                accuracy: 'Accuracy'
+            };
+            headerCells.forEach((name, idx) => {
+                const key = name.trim().toLowerCase();
+                if (wanted[key]) {
+                    colIndex[wanted[key]] = idx;
+                }
+            });
+            if (colIndex.Latitude === undefined || colIndex.Longitude === undefined || colIndex.CreateDate === undefined) {
+                throw new Error('CSV must include Latitude, Longitude, and CreateDate columns (extra columns are ignored).');
+            }
+            const rows = [];
+            for (let r = 1; r < lines.length; r++) {
+                const lineNum = r + 1;
+                const cells = parseCsvLine(lines[r]);
+                const latRaw = cells[colIndex.Latitude];
+                const lonRaw = cells[colIndex.Longitude];
+                const dateRaw = cells[colIndex.CreateDate];
+                if (latRaw === undefined || lonRaw === undefined || dateRaw === undefined) {
+                    throw new Error(`CSV row ${lineNum}: missing required field value.`);
+                }
+                const Latitude = normalizeNumericCell(latRaw);
+                const Longitude = normalizeNumericCell(lonRaw);
+                if (!Number.isFinite(Latitude) || !Number.isFinite(Longitude)) {
+                    throw new Error(`CSV row ${lineNum}: invalid Latitude or Longitude.`);
+                }
+                const CreateDate = String(dateRaw).trim().replace(/^"|"$/g, '');
+                const point = { Latitude, Longitude, CreateDate };
+                if (colIndex.Accuracy !== undefined) {
+                    const accRaw = cells[colIndex.Accuracy];
+                    if (accRaw !== undefined && String(accRaw).trim() !== '') {
+                        const Accuracy = normalizeNumericCell(accRaw);
+                        if (Number.isFinite(Accuracy)) {
+                            point.Accuracy = Accuracy;
+                        }
+                    }
+                }
+                rows.push(point);
+            }
+            return rows;
+        }
+        
+        function parseRouteInput(text) {
+            const t = text.replace(/^\uFEFF/, '').trim();
+            if (!t) return null;
+            if (t[0] === '[') {
+                const data = JSON.parse(t);
+                if (!Array.isArray(data)) {
+                    throw new Error('JSON input must be an array of point objects.');
+                }
+                return data;
+            }
+            return parseCsvRoute(t);
+        }
         
         // Initialize the map
         function initMap() {
@@ -561,6 +737,90 @@
             updateTimeGaps(routeData, routeNumber);
         }
         
+        // Minimum distance from a location to any point across loaded route textareas
+        function calculate_min_distance() {
+            const resultEl = document.getElementById('min-distance-result');
+            const latStr = document.getElementById('targetLatitude').value.trim();
+            const lonStr = document.getElementById('targetLongitude').value.trim();
+            
+            if (!latStr || !lonStr) {
+                resultEl.textContent = 'Enter latitude and longitude.';
+                removeTargetMarker();
+                return;
+            }
+            
+            const tLat = normalizeNumericCell(latStr);
+            const tLon = normalizeNumericCell(lonStr);
+            if (!Number.isFinite(tLat) || !Number.isFinite(tLon)) {
+                resultEl.textContent = 'Invalid latitude or longitude.';
+                removeTargetMarker();
+                return;
+            }
+            
+            setTargetMarker(tLat, tLon);
+            
+            const route1Text = document.getElementById('route1').value.trim();
+            const route2Text = document.getElementById('route2').value.trim();
+            let route1Data = null;
+            let route2Data = null;
+            
+            try {
+                if (route1Text) route1Data = parseRouteInput(route1Text);
+                if (route2Text) route2Data = parseRouteInput(route2Text);
+            } catch (error) {
+                resultEl.textContent = '';
+                alert('Error parsing route data: ' + (error && error.message ? error.message : 'Check JSON or CSV format.'));
+                console.error('Route parsing error:', error);
+                return;
+            }
+            
+            const candidates = [];
+            if (route1Data && route1Data.length > 0) {
+                route1Data.forEach((p, i) => {
+                    candidates.push({
+                        route: 1,
+                        pointIndex: i,
+                        dist: calculateDistance(tLat, tLon, p.Latitude, p.Longitude)
+                    });
+                });
+            }
+            if (route2Data && route2Data.length > 0) {
+                route2Data.forEach((p, i) => {
+                    candidates.push({
+                        route: 2,
+                        pointIndex: i,
+                        dist: calculateDistance(tLat, tLon, p.Latitude, p.Longitude)
+                    });
+                });
+            }
+            
+            if (candidates.length === 0) {
+                resultEl.textContent = 'Paste at least one route with points in Route 1 or Route 2.';
+                targetMarker.setPopupContent(
+                    '<strong>Target point</strong><br>' +
+                    'Lat: ' + tLat.toFixed(6) + '<br>Lng: ' + tLon.toFixed(6) + '<br>' +
+                    '<em>Add route data to compute min distance.</em>'
+                );
+                return;
+            }
+            
+            let best = candidates[0];
+            for (let c = 1; c < candidates.length; c++) {
+                if (candidates[c].dist < best.dist) best = candidates[c];
+            }
+            
+            resultEl.textContent =
+                'Min distance: ' + formatDistance(best.dist) +
+                ' (Route ' + best.route + ', point ' + (best.pointIndex + 1) + ')';
+            
+            targetMarker.setPopupContent(
+                '<strong>Target point</strong><br>' +
+                'Lat: ' + tLat.toFixed(6) + '<br>Lng: ' + tLon.toFixed(6) + '<br>' +
+                '<strong>Min distance:</strong> ' + formatDistance(best.dist) +
+                ' (Route ' + best.route + ', point ' + (best.pointIndex + 1) + ')'
+            );
+        }
+        
         // Clear all routes from map
         function clearRoutes() {
             routeLayers.forEach(layer => {
@@ -571,6 +831,11 @@
             // Clear route statistics and time gaps
             updateRouteStats(null, 1);
             updateRouteStats(null, 2);
+            
+            const minResult = document.getElementById('min-distance-result');
+            if (minResult) minResult.textContent = '';
+            
+            removeTargetMarker();
         }
         
         // Visualize routes
@@ -585,12 +850,12 @@
                 let route2Data = null;
                 
                 if (route1Text) {
-                    route1Data = JSON.parse(route1Text);
+                    route1Data = parseRouteInput(route1Text);
                     addRouteToMap(route1Data, '#3388ff', 'Route 1');
                 }
                 
                 if (route2Text) {
-                    route2Data = JSON.parse(route2Text);
+                    route2Data = parseRouteInput(route2Text);
                     addRouteToMap(route2Data, '#ff3333', 'Route 2');
                 }
                 
@@ -599,11 +864,11 @@
                 updateRouteStats(route2Data, 2);
                 
                 if (!route1Text && !route2Text) {
-                    alert('Please paste at least one route JSON array.');
+                    alert('Please paste at least one route as a JSON array or CSV (with header).');
                 }
             } catch (error) {
-                alert('Error parsing JSON data. Please check your input format.');
-                console.error('JSON parsing error:', error);
+                alert('Error parsing route data: ' + (error && error.message ? error.message : 'Please check your JSON or CSV format.'));
+                console.error('Route parsing error:', error);
             }
         }
         
